@@ -1,0 +1,5 @@
+[master]
+10.211.55.54 ansible_python_interpreter=/usr/bin/python3  ansible_user=vagrant
+[nodes]
+10.211.55.55 ansible_python_interpreter=/usr/bin/python3  ansible_user=vagrant
+10.211.55.53 ansible_python_interpreter=/usr/bin/python3  ansible_user=vagrant

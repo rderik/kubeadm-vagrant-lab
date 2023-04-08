@@ -1,0 +1,402 @@
+---
+- name: Kubernetes Master Setup
+  gather_facts: true
+  hosts: master
+  pre_tasks:
+    - raw: test -e /usr/bin/python3 || (apt -y update && install -y python-minimal)
+
+  tasks:
+    - name: install requirements
+      become: true
+      tags:
+        - install-dependencies
+      apt:
+        state: present
+        name:
+          - vim
+          - git
+          - bash-completion
+          - silversearcher-ag
+          - unzip
+          - direnv
+          - nmap
+          - jq
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+
+    - name: Download awscliv2 installer.
+      tags:
+        - install-awscli
+      unarchive:
+        src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: "{{ executable_temp_dir | default('/tmp') }}"
+        remote_src: yes
+        creates: /tmp/aws
+        mode: 0755
+
+    - name: Run the installer.
+      tags:
+        - install-awscli
+      command:
+      args:
+        cmd: "{{ executable_temp_dir | default('/tmp') }}/aws/install"
+        creates: /usr/local/bin/aws
+      become: true
+      register: aws_install
+
+    - name: "Show installer output."
+      tags:
+        - install-awscli
+      debug:
+        var: aws_install
+        verbosity: 2
+
+    - name: Download kubectl
+      tags:
+        - install-kubectl
+      get_url:
+        url: https://dl.k8s.io/release/v1.23.0/bin/linux/amd64/kubectl
+        dest: /tmp/
+        checksum: sha256:2d0f5ba6faa787878b642c151ccb2c3390ce4c1e6c8e2b59568b3869ba407c4f
+
+    - name: Install kubectl
+      tags:
+        - install-kubectl
+      become: true
+      shell: |
+        sudo install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+    - name: Download helm
+      tags:
+        - install-helm
+      get_url:
+        url: https://get.helm.sh/helm-v3.10.0-linux-amd64.tar.gz
+        dest: /tmp/helm.tar.gz
+        checksum: sha256:bf56beb418bb529b5e0d6d43d56654c5a03f89c98400b409d1013a33d9586474
+
+    - name: Extract helm
+      tags:
+        - install-helm
+      unarchive:
+        src: "/tmp/helm.tar.gz"
+        dest: "/tmp/"
+        remote_src: True
+
+    - name: Install helm
+      tags:
+        - install-helm
+      become: true
+      shell: |
+        sudo install -o root -g root -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+
+    - name: Download eksctl
+      tags:
+        - install-eksctl
+      get_url:
+        url: https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz
+
+        dest: /tmp/eksctl.tar.gz
+
+    - name: Extract eksctl
+      tags:
+        - install-eksctl
+      unarchive:
+        src: "/tmp/eksctl.tar.gz"
+        dest: "/tmp/"
+        remote_src: True
+
+    - name: Install eksctl
+      tags:
+        - install-eksctl
+      become: true
+      shell: |
+        sudo install -o root -g root -m 0755 /tmp/eksctl /usr/local/bin/eksctl
+    - name: Install nvm
+      git: repo=https://github.com/creationix/nvm.git dest=~/.nvm
+
+    - name: Install nvm and node and set version
+      shell: "source /home/vagrant/.nvm/nvm.sh && nvm install 14.16.1"
+      args:
+        executable: /bin/bash
+
+    - name: terraform install
+      tags:
+        - install-terraform
+      become: true
+      unarchive:
+        src: https://releases.hashicorp.com/terraform/1.3.3/terraform_1.3.3_linux_amd64.zip
+        dest: /usr/local/bin
+        remote_src: True
+
+
+    - name: Download file with check (sha256)
+      get_url:
+        url: https://go.dev/dl/go1.17.8.linux-amd64.tar.gz
+        dest: /tmp/
+        checksum: sha256:980e65a863377e69fd9b67df9d8395fd8e93858e7a24c9f55803421e453f4f99
+
+    - name: Unzip and Install Golang
+      become: true
+      shell: |
+        rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.17.8.linux-amd64.tar.gz
+        echo "export GOROOT=/home/vagrant/go_projects" > ~/.bashrc
+
+    - name: add github ssh key
+      copy: >
+        src=resources/id_github
+        dest=/home/vagrant/.ssh/id_github
+        owner=vagrant
+        group=vagrant
+        mode=0400
+
+    - name: configure ssh to use ansible key for github.com
+      template: >
+        src=resources/ssh_config
+        dest=/home/vagrant/.ssh/config
+        owner=vagrant
+        group=vagrant
+        mode=0644
+
+    - name: Configure git email
+      git_config:
+        name: user.email
+        scope: global
+        value: 'derik@rderik.com'
+
+    - name: Configure git user
+      git_config:
+        name: user.name
+        scope: global
+        value: 'Derik Ramirez'
+
+    - name: clone a private repository
+      ansible.builtin.git:
+        accept_hostkey: yes
+        repo: git@github.com:rderik/dotfiles.git
+        dest: /home/vagrant/dotfiles
+
+    - name: Create config directory
+      file:
+        path: /home/vagrant/.config/bash
+        state: directory
+
+    # Install latest vim  from source
+    #- name: get and build latest vim
+      #tags:
+        #- install-vim
+      #become: true
+      #shell: |
+        #sudo sed -i 's/# deb-src/deb-src/' /etc/apt/sources.list
+        #sudo apt update
+    #- name: install requirements
+      #tags:
+        #- install-vim
+      #become: true
+      #apt:
+        #state: build-dep
+        #name:
+          #- vim
+
+    ##- name: get and build latest vim
+      ##tags:
+        ##- install-vim
+      ##shell: |
+        ##git clone https://github.com/vim/vim.git
+        ##cd vim
+        ##git pull
+        ##./configure --with-features=huge
+        ##make
+        ###make test
+
+    #- name: install latest vim
+      #tags:
+        #- install-vim
+      #become: true
+      #shell: |
+        #cd vim
+        #make install
+        #make clean
+        #make distclean
+
+    - name: install VimPlug
+      shell: |
+        curl -fLo ~/.vim/autoload/plug.vim --create-dirs \
+            https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+        echo -ne '\n' | vim +PlugInstall +qa
+
+    - name: create dotfile links
+      shell: |
+        ln -sf /home/vagrant/dotfiles/.vimrc /home/vagrant/.vimrc
+        ln -sf /home/vagrant/dotfiles/.bash_profile /home/vagrant/.bash_profile
+        ln -sf /home/vagrant/dotfiles/config/bash/bash_aliases /home/vagrant/.config/bash/bash_aliases
+        ln -sf /home/vagrant/dotfiles/config/bash/bash_exports /home/vagrant/.config/bash/bash_exports
+        ln -sf /home/vagrant/dotfiles/config/bash/bash_extra /home/vagrant/.config/bash/bash_extra
+        ln -sf /home/vagrant/dotfiles/config/bash/bash_path /home/vagrant/.config/bash/bash_path
+        ln -sf /home/vagrant/dotfiles/config/bash/bash_prompt /home/vagrant/.config/bash/bash_prompt
+
+    - name: install Vim Plugins
+      shell: |
+        echo -ne '\n' | vim +PlugInstall +qa
+
+    - name: Enable forwarding IPv4 and letting iptables see bridged traffic
+      tags:
+        - install-container-runtime
+      become: true
+      shell: |
+        cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+        overlay
+        br_netfilter
+        EOF
+
+        sudo modprobe overlay
+        sudo modprobe br_netfilter
+
+        # sysctl params required by setup, params persist across reboots
+        cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+        net.bridge.bridge-nf-call-iptables  = 1
+        net.bridge.bridge-nf-call-ip6tables = 1
+        net.ipv4.ip_forward                 = 1
+        EOF
+
+        # Apply sysctl params without reboot
+        sudo sysctl --system
+
+    - name: Get DEB architecture
+      tags:
+        - install-container-runtime
+      shell: dpkg --print-architecture
+      register: deb_architecture
+
+    - name: APT add docker key
+      tags:
+        - install-container-runtime
+      shell: |
+        sudo mkdir -m 0755 -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --yes --dearmor -o /etc/apt/keyrings/docker.gpg
+    - name: APT add docker repository
+      tags:
+        - install-container-runtime
+      become: true
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ deb_architecture.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: install containerd
+      become: true
+      tags:
+        - install-container-runtime
+      apt:
+        state: present
+        update_cache: yes
+        force_apt_get: true
+        name:
+          - containerd.io
+    - name: Configuring the systemd cgroup driver
+      tags:
+        - install-container-runtime
+      become: true
+      shell: |
+        cat <<EOF | sudo tee /etc/containerd/config.toml
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+            SystemdCgroup = true
+        EOF
+        # Apply sysctl params without reboot
+        sudo systemctl restart containerd
+
+    - name: APT add Google Cloud public signing key key
+      tags:
+        - install-kubernetes-tools
+      become: true
+      ansible.builtin.get_url:
+        url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+        dest: /etc/apt/trusted.gpg.d/kubernetes-archive-keyring.gpg
+
+    - name: Add the Kubernetes apt repository
+      tags:
+        - install-kubernetes-tools
+      become: true
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/trusted.gpg.d/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main"
+        state: present
+
+    - name: Hold kubeadm
+      tags:
+        - install-kubernetes-tools
+      become: true
+      ansible.builtin.dpkg_selections:
+        name: kubeadm
+        selection: hold
+    - name: Hold kubelet
+      tags:
+        - install-kubernetes-tools
+      become: true
+      ansible.builtin.dpkg_selections:
+        name: kubelet
+        selection: hold
+    - name: Hold kubectl
+      tags:
+        - install-kubernetes-tools
+      become: true
+      ansible.builtin.dpkg_selections:
+        name: kubectl
+        selection: hold
+    - name: install Kubernetes tools (kubelet, kubeadm, kubectl)
+      become: true
+      tags:
+        - install-kubernetes-tools
+      apt:
+        state: present
+        update_cache: yes
+        force_apt_get: true
+        allow_change_held_packages: false
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+
+    - name: Disable swap for current session
+      tags:
+        - disable-swap
+      command: swapoff -a
+      become: true
+
+    - name: Disable swap permanently, persist reboots
+      tags:
+        - disable-swap
+      become: true
+      replace:
+        path: /etc/fstab
+        regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+        replace: '#\1\2\3swap\4'
+        backup: yes
+
+    - name: setup kubeadm
+      tags:
+        - set-up-kubeadm
+      become: true
+      shell: |
+        kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=192.168.56.11
+        mkdir -p ~vagrant/.kube
+        sudo cp -i /etc/kubernetes/admin.conf ~vagrant/.kube/config
+        sudo chown vagrant:vagrant ~vagrant/.kube/config
+    - name: setup Calico network addon
+      tags:
+        - set-up-pod-network-addon
+      shell: |
+        mkdir -p calico
+        cd calico
+        curl -LO https://raw.githubusercontent.com/projectcalico/calico/v3.25.1/manifests/tigera-operator.yaml
+        curl -LO https://raw.githubusercontent.com/projectcalico/calico/v3.25.1/manifests/custom-resources.yaml
+        cat <<EOF | sudo tee tigera-config-map.yaml
+        kind: ConfigMap
+        apiVersion: v1
+        metadata:
+          name: kubernetes-services-endpoint
+          namespace: tigera-operator
+        data:
+          KUBERNETES_SERVICE_HOST: "192.168.56.11"
+          KUBERNETES_SERVICE_PORT: "6443"
+        EOF
