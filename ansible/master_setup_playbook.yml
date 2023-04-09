@@ -400,6 +400,16 @@
         replace: '#\1\2\3swap\4'
         backup: yes
 
+    - name: setup kubectl auto complete
+      tags:
+        - kubectl-autocomplete
+      become: true
+      shell: |
+        echo 'source <(kubectl completion bash)' >> ~/.config/bash/bash_extra
+        echo 'alias k=kubectl' >> ~/.config/bash/bash_extra
+        echo 'complete -o default -F __start_kubectl k' >> ~/.config/bash/bash_extra
+        echo 'source <(kubeadm completion bash)' >> ~/.config/bash/bash_extra
+
     - name: setup kubeadm
       tags:
         - set-up-kubeadm
