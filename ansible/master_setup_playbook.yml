@@ -403,7 +403,6 @@
     - name: setup kubectl auto complete
       tags:
         - kubectl-autocomplete
-      become: true
       shell: |
         echo 'source <(kubectl completion bash)' >> ~/.config/bash/bash_extra
         echo 'alias k=kubectl' >> ~/.config/bash/bash_extra
